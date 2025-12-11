@@ -1,5 +1,21 @@
 # pokus-ewg
 
+## Lombok a SLF4J
+
+Do projektu bol pridaný Lombok a v aplikácii sa používa anotácia `@Slf4j` pre logovanie cez SLF4J.
+
+Zmeny:
+- `pom.xml`: pridaná závislosť `org.projectlombok:lombok` (scope `provided`) a annotation processor pre Maven Compiler Plugin.
+- Pre SLF4J API je pridaná závislosť `org.slf4j:slf4j-api` a most/bridge `org.jboss.slf4j:slf4j-jboss-logmanager` pre Quarkus runtime.
+- Triedy `KtopConsumer`, `KamionResource`, `KamionService`, `KamionRepository` používajú anotáciu `@Slf4j` a volajú `log.info/debug/...`.
+
+Poznámky k IDE:
+- V IntelliJ IDEA povoľte Annotation Processing: Settings > Build, Execution, Deployment > Compiler > Annotation Processors > Enable annotation processing.
+
+Konfigurácia úrovne logovania:
+- V `src/main/resources/application.properties` môžete nastaviť úrovne, napr.:
+  - `quarkus.log.category."sk.lorman".level=DEBUG`
+
 This project uses Quarkus, the Supersonic Subatomic Java Framework.
 
 If you want to learn more about Quarkus, please visit its website: <https://quarkus.io/>.
@@ -90,3 +106,14 @@ Easily start your REST Web Services
 Easily start your RESTful Web Services
 
 [Related guide section...](https://quarkus.io/guides/getting-started#the-jax-rs-resources)
+
+## Kafka / Event-driven consumer
+
+- Projekt obsahuje event-driven bean `KtopConsumer`, ktorý počúva na kanál/temu "ktop".
+- V dev/test režime je predvolene použitý in-memory konektor (nepotrebujete bežiace Kafka broker): správy môžete posielať pomocou SmallRye in-memory kanála.
+- V prod profile sa používa Kafka konektor. Konfigurácia je v `application.properties` (premenné `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_GROUP_ID`).
+
+URL a nastavenia:
+- `%prod.mp.messaging.incoming.ktop.connector=smallrye-kafka`
+- `%prod.mp.messaging.incoming.ktop.topic=ktop`
+- `%prod.mp.messaging.incoming.ktop.bootstrap.servers=${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}`

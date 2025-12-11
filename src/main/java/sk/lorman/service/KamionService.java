@@ -3,22 +3,26 @@ package sk.lorman.service;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import lombok.extern.slf4j.Slf4j;
 import sk.lorman.domain.Kamion;
 import sk.lorman.repository.KamionRepository;
 
 import java.util.List;
 
 @ApplicationScoped
+@Slf4j
 public class KamionService {
 
     @Inject
     KamionRepository repository;
 
     public List<Kamion> listAll() {
+        log.debug("Listing all Kamion entities");
         return repository.listAll();
     }
 
     public Kamion getById(Long id) {
+        log.debug("Get Kamion by id={}", id);
         return repository.findById(id);
     }
 
@@ -27,6 +31,7 @@ public class KamionService {
         if (input == null || input.spz == null || input.znacka == null || input.nosnostKg == null) {
             throw new IllegalArgumentException("Neplatné dáta");
         }
+        log.info("Creating Kamion spz={}, znacka={}", input.spz, input.znacka);
         input.id = null; // ensure new
         repository.persist(input);
         return input;
@@ -34,8 +39,10 @@ public class KamionService {
 
     @Transactional
     public Kamion update(Long id, Kamion input) {
+        log.info("Updating Kamion id={}", id);
         Kamion existing = repository.findById(id);
         if (existing == null) {
+            log.info("Kamion id={} not found", id);
             return null;
         }
         if (input != null) {
@@ -48,8 +55,10 @@ public class KamionService {
 
     @Transactional
     public boolean delete(Long id) {
+        log.info("Deleting Kamion id={}", id);
         Kamion existing = repository.findById(id);
         if (existing == null) {
+            log.info("Kamion id={} not found for delete", id);
             return false;
         }
         repository.delete(existing);
