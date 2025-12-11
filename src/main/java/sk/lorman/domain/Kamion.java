@@ -1,21 +1,32 @@
 package sk.lorman.domain;
 
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
+import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
+import jakarta.persistence.*;
 
 @Entity
-public class Kamion extends PanacheEntity {
+@Table(name = "kamion")
+public class Kamion extends PanacheEntityBase {
+
+
+    @Id
+    @SequenceGenerator(
+            name = "kamionSeq",
+            sequenceName = "kamion_SEQ",
+            allocationSize = 1 // musí sedieť s INCREMENT BY v DB
+    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "kamionSeq")
+    public Long id;
 
     // ŠPZ (štátna poznávacia značka)
-    @Column(nullable = false, unique = true)
+    @Column(name = "spz", nullable = false, unique = true)
     public String spz;
 
     // Značka / výrobca
-    @Column(nullable = false)
+    @Column(name = "znacka", nullable = false)
     public String znacka;
 
     // Nosnosť v kilogramoch
-    @Column(nullable = false)
+    @Column(name = "nosnost_kg", nullable = false)
     public Integer nosnostKg;
 }

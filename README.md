@@ -4,6 +4,15 @@ This project uses Quarkus, the Supersonic Subatomic Java Framework.
 
 If you want to learn more about Quarkus, please visit its website: <https://quarkus.io/>.
 
+## Swagger UI / OpenAPI
+
+Swagger UI je po pridaní závislosti `quarkus-smallrye-openapi` dostupný automaticky v dev/test režime na:
+
+- Swagger UI: http://localhost:8080/q/swagger-ui
+- OpenAPI (JSON): http://localhost:8080/q/openapi
+
+Spustite aplikáciu v dev móde (`./mvnw quarkus:dev`) a otvorte URL vyššie v prehliadači.
+
 ## Running the application in dev mode
 
 You can run your application in dev mode that enables live coding using:
