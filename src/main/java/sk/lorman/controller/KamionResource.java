@@ -1,7 +1,8 @@
 package sk.lorman.controller;
 
+import io.smallrye.mutiny.Uni;
+import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.inject.Inject;
-import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -22,59 +23,66 @@ public class KamionResource {
     KamionService service;
 
     @GET
-    public List<Kamion> list() {
+    public Uni<List<Kamion>> list() {
         log.debug("Listing all kamiony");
-        return service.listAll();
+        return Uni.createFrom().item(service::listAll)
+                .runSubscriptionOn(Infrastructure.getDefaultExecutor());
     }
 
     @GET
     @Path("/{id}")
-    public Kamion get(@PathParam("id") Long id) {
+    public Uni<Kamion> get(@PathParam("id") Long id) {
         log.debug("Fetching kamion with id={}", id);
-        Kamion k = service.getById(id);
-        if (k == null) {
-            log.info("Kamion with id={} not found", id);
-            throw new NotFoundException();
-        }
-        return k;
+        return Uni.createFrom().item(() -> {
+                    Kamion k = service.getById(id);
+                    if (k == null) {
+                        log.info("Kamion with id={} not found", id);
+                        throw new NotFoundException();
+                    }
+                    return k;
+                })
+                .runSubscriptionOn(Infrastructure.getDefaultExecutor());
     }
 
     @POST
-    @Transactional
-    public Response create(Kamion input) {
-        try {
-            log.info("Creating new kamion with spz={}", input != null ? input.spz : null);
-            Kamion created = service.create(input);
-            return Response.created(URI.create("/kamiony/" + created.id)).entity(created).build();
-        } catch (IllegalArgumentException e) {
-            log.warn("Validation error when creating kamion: {}", e.getMessage());
-            throw new BadRequestException(e.getMessage());
-        }
+    public Uni<Response> create(Kamion input) {
+        log.info("Creating new kamion with spz={}", input != null ? input.spz : null);
+        return Uni.createFrom().item(() -> {
+                    Kamion created = service.create(input);
+                    return Response.created(URI.create("/kamiony/" + created.id)).entity(created).build();
+                })
+                .onFailure(IllegalArgumentException.class)
+                .transform(e -> new BadRequestException(e.getMessage()))
+                .runSubscriptionOn(Infrastructure.getDefaultExecutor());
     }
 
     @PUT
     @Path("/{id}")
-    @Transactional
-    public Kamion update(@PathParam("id") Long id, Kamion input) {
+    public Uni<Kamion> update(@PathParam("id") Long id, Kamion input) {
         log.info("Updating kamion id={}", id);
-        Kamion updated = service.update(id, input);
-        if (updated == null) {
-            log.info("Kamion with id={} not found for update", id);
-            throw new NotFoundException();
-        }
-        return updated;
+        return Uni.createFrom().item(() -> {
+                    Kamion updated = service.update(id, input);
+                    if (updated == null) {
+                        log.info("Kamion with id={} not found for update", id);
+                        throw new NotFoundException();
+                    }
+                    return updated;
+                })
+                .runSubscriptionOn(Infrastructure.getDefaultExecutor());
     }
 
     @DELETE
     @Path("/{id}")
-    @Transactional
-    public Response delete(@PathParam("id") Long id) {
+    public Uni<Response> delete(@PathParam("id") Long id) {
         log.info("Deleting kamion id={}", id);
-        boolean deleted = service.delete(id);
-        if (!deleted) {
-            log.info("Kamion with id={} not found for delete", id);
-            throw new NotFoundException();
-        }
-        return Response.noContent().build();
+        return Uni.createFrom().item(() -> {
+                    boolean deleted = service.delete(id);
+                    if (!deleted) {
+                        log.info("Kamion with id={} not found for delete", id);
+                        throw new NotFoundException();
+                    }
+                    return Response.noContent().build();
+                })
+                .runSubscriptionOn(Infrastructure.getDefaultExecutor());
     }
 }

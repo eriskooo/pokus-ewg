@@ -16,12 +16,9 @@
         <quarkus.platform.version>3.30.3</quarkus.platform.version>
         <skipITs>true</skipITs>
         <surefire-plugin.version>3.5.4</surefire-plugin.version>
-        <!-- Container image build/push configuration -->
-        <quarkus.container-image.builder>jib</quarkus.container-image.builder>
-        <quarkus.container-image.build>true</quarkus.container-image.build>
-<!--        <quarkus.container-image.push>true</quarkus.container-image.push>-->
-<!--        <quarkus.container-image.registry>localhost:5000</quarkus.container-image.registry>-->
-        <quarkus.container-image.tag>snapshot</quarkus.container-image.tag>
+<!--        <quarkus.container-image.builder>jib</quarkus.container-image.builder>-->
+<!--        <quarkus.container-image.build>true</quarkus.container-image.build>-->
+<!--        <quarkus.container-image.tag>snapshot</quarkus.container-image.tag>-->
     </properties>
 
     <dependencyManagement>
