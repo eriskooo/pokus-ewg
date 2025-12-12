@@ -53,16 +53,6 @@ Datasource defaults (local dev): H2 in-memory. See `src/main/resources/applicati
 
 Kafka connection is configured in `application.properties`. Tests/dev can use in-memory connectors (see `src/test/resources/application.properties`).
 
-## Container image (Jib) – local registry
-The project is configured to build and push a container image to a local registry on every Maven build:
-
-```
-docker run -d -p 5000:5000 --name registry registry:2  # once
-./mvnw -DskipTests package
-```
-
-Resulting image: `localhost:5000/pokus-ewg:snapshot` (using Quarkus Container Image Jib extension).
-
 ## Build
 Standard build:
 
@@ -75,6 +65,56 @@ Native build (optional):
 ```
 ./mvnw package -Dnative
 ```
+
+## Container image (Dockerfile)
+The project now uses a simple Dockerfile based on OpenJDK (Temurin 21 JRE).
+
+Build the uber-jar and the Docker image:
+
+```
+./mvnw -DskipTests package
+docker build -t lorma/pokus-ewg:snapshot .
+```
+
+Run locally:
+
+```
+docker run --rm -p 8080:8080 lorma/pokus-ewg:snapshot
+```
+
+External configuration: you can mount a directory with configuration and Quarkus will pick it up via the QUARKUS_CONFIG_LOCATIONS environment variable (preconfigured in the Dockerfile to `/etc/pokus-ewg-config`):
+
+```
+# Windows PowerShell
+docker run --rm -p 8080:8080 -v %CD%\helm\app-config:/etc/pokus-ewg-config lorma/pokus-ewg:snapshot
+
+# Linux/macOS
+docker run --rm -p 8080:8080 -v $(pwd)/helm/app-config:/etc/pokus-ewg-config lorma/pokus-ewg:snapshot
+```
+
+
+### Docker Desktop: make the image available to Kubernetes (no push needed)
+If you use the Kubernetes that is built into Docker Desktop, you can build the image locally and the deployment can use it without pushing to any registry:
+
+1) Build the image locally (as above):
+
+```
+./mvnw -DskipTests package
+docker build -t lorma/pokus-ewg:snapshot .
+```
+
+2) Adjust the image pull policy for development (so it doesn't try to pull from a registry):
+- In `helm/deployment.yaml` set `imagePullPolicy` to `IfNotPresent` (or temporarily `Never`).
+
+3) Deploy/rollout restart:
+
+```
+kubectl apply -n pokus-ewg -f helm/deployment.yaml
+kubectl rollout restart deployment/pokus-ewg -n pokus-ewg
+kubectl rollout status deployment/pokus-ewg -n pokus-ewg
+```
+
+Note: Docker Desktop Kubernetes uses the same Docker daemon, so any image you see under "Images" in Docker Desktop is also available to the Kubernetes nodes on the same host.
 
 ## Logging & Lombok
 Lombok `@Slf4j` is used for concise logging. Adjust log levels via `application.properties` (e.g., `quarkus.log.category."sk.lorman".level=DEBUG`).
@@ -91,66 +131,7 @@ The helm directory contains plain Kubernetes manifests (not a Helm chart) that y
 
 Prerequisites:
 - A working Kubernetes cluster and kubectl configured to point to it
-- A container image accessible by the cluster (default in manifests is lorma/pokus-ewg:snapshot)
-  - If you build locally, either push to an accessible registry or change the image in helm/deployment.yaml accordingly
+- A container image accessible by the cluster (the default in the manifests is `lorma/pokus-ewg:snapshot`)
+  - If you build the image locally from the Dockerfile, push it to your registry and update `helm/deployment.yaml` field `spec.template.spec.containers[0].image` to your name/tag
 
-Optional: build and push the image (example using local registry already described above):
-
-```
-./mvnw -DskipTests package
-# Image is pushed to localhost:5000/pokus-ewg:snapshot if local registry is running
-```
-
-1) Choose namespace (recommended)
-- Either use default, or create/use a dedicated one, e.g. pokus-ewg:
-
-```
-kubectl create namespace pokus-ewg
-```
-
-2) Apply manifests
-- If you created a namespace:
-
-```
-kubectl apply -n pokus-ewg -f helm/configmap.yaml
-kubectl apply -n pokus-ewg -f helm/deployment.yaml
-kubectl apply -n pokus-ewg -f helm/service.yaml
-```
-
-- If you use the default namespace:
-
-```
-kubectl apply -f helm/configmap.yaml
-kubectl apply -f helm/deployment.yaml
-kubectl apply -f helm/service.yaml
-```
-
-Tip: You can also apply the whole folder:
-
-```
-kubectl apply -n pokus-ewg -f helm/
-```
-
-3) Verify
-
-```
-kubectl get pods -n pokus-ewg
-kubectl logs -n pokus-ewg deploy/pokus-ewg
-```
-
-In the logs you should see the startup message and an INFO line with the random property value, for example:
-
-- Random property app.random=nr2
-
-4) Troubleshooting
-- ConfigMap not found / FailedMount: Ensure the ConfigMap is applied in the same namespace as the Deployment and that you applied configmap.yaml before the deployment (or apply the whole helm/ directory in one command). Example error: MountVolume.SetUp failed for volume "app-config": configmap "pokus-ewg-config" not found
-- ImagePullBackOff: Make sure the image name in helm/deployment.yaml exists and the cluster can pull it (push to a reachable registry or use an image present on all nodes).
-- Port/access: The included Service is ClusterIP. To reach it from outside the cluster, use port-forward or create a NodePort/Ingress as needed.
-
-5) Remove
-
-```
-kubectl delete -n pokus-ewg -f helm/
-# or, if you used default namespace:
-kubectl delete -f helm/
-```
+Optional: build the image from the Dockerfile and push to your registry (example):
