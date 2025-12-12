@@ -9,3 +9,13 @@ data:
   application.properties: |
     # Override/custom properties for k8s
     app.random=nr2
+    # Enable JSON logging in Kubernetes for ELK ingestion
+    quarkus.log.console.json=true
+    quarkus.log.console.json.fields=timestamp,level,loggerName,threadName,message,mdc,exception
+    quarkus.log.console.json.field-names.timestamp=@timestamp
+    quarkus.log.console.json.field-names.level=level
+    quarkus.log.console.json.field-names.loggerName=logger
+    quarkus.log.console.json.field-names.threadName=thread
+    quarkus.log.console.json.field-names.message=message
+    quarkus.log.console.json.field-names.mdc=mdc
+    quarkus.log.console.json.exception-output-type=formatted

@@ -31,6 +31,11 @@
     </dependencyManagement>
 
     <dependencies>
+        <!-- JSON logging for ELK-friendly output -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-logging-json</artifactId>
+        </dependency>
         <!-- Použitie SLF4J API v kóde -->
         <dependency>
             <groupId>org.slf4j</groupId>
