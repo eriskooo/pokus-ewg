@@ -82,3 +82,75 @@ Lombok `@Slf4j` is used for concise logging. Adjust log levels via `application.
 ## Notes
 - The project uses up‑to‑date Quarkus/Hibernate/SmallRye/Flyway versions managed through the Quarkus 3.30.3 BOM.
 - Requires Java 21.
+
+## Deploy to Kubernetes using the helm directory
+The helm directory contains plain Kubernetes manifests (not a Helm chart) that you can apply directly with kubectl. They configure:
+- A ConfigMap with application.properties overriding app.random=nr2
+- A Deployment that mounts the ConfigMap and sets QUARKUS_CONFIG_LOCATIONS so Quarkus picks it up
+- A Service to expose the pod inside the cluster
+
+Prerequisites:
+- A working Kubernetes cluster and kubectl configured to point to it
+- A container image accessible by the cluster (default in manifests is lorma/pokus-ewg:snapshot)
+  - If you build locally, either push to an accessible registry or change the image in helm/deployment.yaml accordingly
+
+Optional: build and push the image (example using local registry already described above):
+
+```
+./mvnw -DskipTests package
+# Image is pushed to localhost:5000/pokus-ewg:snapshot if local registry is running
+```
+
+1) Choose namespace (recommended)
+- Either use default, or create/use a dedicated one, e.g. pokus-ewg:
+
+```
+kubectl create namespace pokus-ewg
+```
+
+2) Apply manifests
+- If you created a namespace:
+
+```
+kubectl apply -n pokus-ewg -f helm/configmap.yaml
+kubectl apply -n pokus-ewg -f helm/deployment.yaml
+kubectl apply -n pokus-ewg -f helm/service.yaml
+```
+
+- If you use the default namespace:
+
+```
+kubectl apply -f helm/configmap.yaml
+kubectl apply -f helm/deployment.yaml
+kubectl apply -f helm/service.yaml
+```
+
+Tip: You can also apply the whole folder:
+
+```
+kubectl apply -n pokus-ewg -f helm/
+```
+
+3) Verify
+
+```
+kubectl get pods -n pokus-ewg
+kubectl logs -n pokus-ewg deploy/pokus-ewg
+```
+
+In the logs you should see the startup message and an INFO line with the random property value, for example:
+
+- Random property app.random=nr2
+
+4) Troubleshooting
+- ConfigMap not found / FailedMount: Ensure the ConfigMap is applied in the same namespace as the Deployment and that you applied configmap.yaml before the deployment (or apply the whole helm/ directory in one command). Example error: MountVolume.SetUp failed for volume "app-config": configmap "pokus-ewg-config" not found
+- ImagePullBackOff: Make sure the image name in helm/deployment.yaml exists and the cluster can pull it (push to a reachable registry or use an image present on all nodes).
+- Port/access: The included Service is ClusterIP. To reach it from outside the cluster, use port-forward or create a NodePort/Ingress as needed.
+
+5) Remove
+
+```
+kubectl delete -n pokus-ewg -f helm/
+# or, if you used default namespace:
+kubectl delete -f helm/
+```
