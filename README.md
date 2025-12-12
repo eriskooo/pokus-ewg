@@ -128,10 +128,78 @@ The helm directory contains plain Kubernetes manifests (not a Helm chart) that y
 - A ConfigMap with application.properties overriding app.random=nr2
 - A Deployment that mounts the ConfigMap and sets QUARKUS_CONFIG_LOCATIONS so Quarkus picks it up
 - A Service to expose the pod inside the cluster
+- A Kafka single-node Deployment + Service so the app has Kafka available at kafka:9092
 
 Prerequisites:
 - A working Kubernetes cluster and kubectl configured to point to it
 - A container image accessible by the cluster (the default in the manifests is `lorma/pokus-ewg:snapshot`)
   - If you build the image locally from the Dockerfile, push it to your registry and update `helm/deployment.yaml` field `spec.template.spec.containers[0].image` to your name/tag
+
+### Start Kafka inside the cluster (single-node for dev/test)
+Apply the Kafka manifest provided in `helm/kafka.yaml`:
+
+```
+kubectl apply -n pokus-ewg -f helm/kafka.yaml
+kubectl get pods -n pokus-ewg -l app=kafka
+kubectl get svc -n pokus-ewg kafka
+```
+
+Notes:
+- This uses Bitnami's Kafka image in KRaft single-node mode (no ZooKeeper) and exposes a ClusterIP Service named `kafka` on port `9092`.
+- The application ConfigMap already sets `mp.messaging.connector.smallrye-kafka.bootstrap.servers=kafka:9092` so the app connects to this Kafka automatically in Kubernetes.
+- If the image `bitnami/kafka:3.7.0` cannot be pulled in your environment, the manifest pins to a stable minor tag `bitnami/kafka:3.7`. You can try another maintained Bitnami Kafka tag (e.g., `3.8` or `latest`) by editing `helm/kafka.yaml` and re-applying:
+
+```
+kubectl apply -n pokus-ewg -f helm/kafka.yaml
+kubectl rollout status deployment/kafka -n pokus-ewg
+```
+
+### Deploy the application (after Kafka is ready)
+```
+kubectl apply -n pokus-ewg -f helm/configmap.yaml
+kubectl apply -n pokus-ewg -f helm/deployment.yaml
+kubectl apply -n pokus-ewg -f helm/service.yaml
+kubectl rollout status deployment/pokus-ewg -n pokus-ewg
+```
+
+### Verify Kafka connectivity
+- Check app logs for produced/consumed messages on topic `my.first.topic`:
+
+```
+kubectl logs -n pokus-ewg deploy/pokus-ewg | grep -i kafka
+```
+
+- Optionally, create the topic explicitly (auto-create is enabled):
+
+```
+  kubectl exec -n pokus-ewg deploy/kafka -- /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --topic my.first.topic --if-not-exists
+```
+
+### Troubleshooting: NodeToControllerChannelManager could not connect to controller (port 9093)
+If you see a warning like:
+
+```
+[NodeToControllerChannelManager id=0 name=heartbeat] Connection to node 0 (kafka/10.99.xx.yy:9093) could not be established. Node may not be available.
+```
+
+Cause:
+- In single-node KRaft mode, the broker’s controller quorum connection must target its own in-pod controller listener on port 9093. If the configuration points to `kafka:9093` (the ClusterIP Service), the connection fails because the Service only exposes port 9092 for clients.
+
+Fix we applied in helm/kafka.yaml:
+- Set `KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@localhost:9093`
+- Keep client listeners as before: `PLAINTEXT://kafka:9092`
+
+How to apply the fix and verify:
+```
+kubectl apply -n pokus-ewg -f helm/kafka.yaml
+kubectl rollout status deployment/kafka -n pokus-ewg
+kubectl logs -n pokus-ewg deploy/kafka | grep -i controller
+```
+You should no longer see the NodeToControllerChannelManager connection warnings. Then redeploy the app (if needed) and check logs again:
+```
+kubectl rollout restart deployment/pokus-ewg -n pokus-ewg
+kubectl rollout status deployment/pokus-ewg -n pokus-ewg
+kubectl logs -n pokus-ewg deploy/pokus-ewg | grep -Ei "kafka|ktop"
+```
 
 Optional: build the image from the Dockerfile and push to your registry (example):

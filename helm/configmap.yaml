@@ -9,3 +9,7 @@ data:
   application.properties: |
     # Override/custom properties for k8s
     app.random=nr2
+    
+    # Point the application to the in-cluster Kafka Service
+    # The kafka Service is created by helm/kafka.yaml and exposes port 9092
+    mp.messaging.connector.smallrye-kafka.bootstrap.servers=kafka:9092
