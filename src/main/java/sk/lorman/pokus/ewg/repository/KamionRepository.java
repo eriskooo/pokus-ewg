@@ -1,9 +1,9 @@
-package sk.lorman.repository;
+package sk.lorman.pokus.ewg.repository;
 
 import io.quarkus.hibernate.orm.panache.PanacheRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import lombok.extern.slf4j.Slf4j;
-import sk.lorman.domain.Kamion;
+import sk.lorman.pokus.ewg.domain.Kamion;
 
 @ApplicationScoped
 @Slf4j

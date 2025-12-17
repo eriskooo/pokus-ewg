@@ -1,4 +1,4 @@
-package sk.lorman.service;
+package sk.lorman.pokus.ewg.service;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;

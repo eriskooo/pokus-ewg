@@ -1,4 +1,4 @@
-package sk.lorman.controller;
+package sk.lorman.pokus.ewg.controller;
 
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.infrastructure.Infrastructure;
@@ -7,8 +7,8 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
-import sk.lorman.domain.Kamion;
-import sk.lorman.service.KamionService;
+import sk.lorman.pokus.ewg.domain.Kamion;
+import sk.lorman.pokus.ewg.service.KamionService;
 
 import java.net.URI;
 import java.util.List;

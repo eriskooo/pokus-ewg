@@ -1,13 +1,12 @@
-package sk.lorman.controller;
+package sk.lorman.pokus.ewg.controller;
 
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
-import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import sk.lorman.repository.KamionRepository;
+import sk.lorman.pokus.ewg.repository.KamionRepository;
 
 import java.util.UUID;
 

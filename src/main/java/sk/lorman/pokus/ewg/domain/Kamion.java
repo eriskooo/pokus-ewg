@@ -1,4 +1,4 @@
-package sk.lorman.domain;
+package sk.lorman.pokus.ewg.domain;
 
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;

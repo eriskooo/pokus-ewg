@@ -1,10 +1,10 @@
-package sk.lorman.repository;
+package sk.lorman.pokus.ewg.repository;
 
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.transaction.Transactional;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
-import sk.lorman.domain.Kamion;
+import sk.lorman.pokus.ewg.domain.Kamion;
 
 import java.util.List;
 

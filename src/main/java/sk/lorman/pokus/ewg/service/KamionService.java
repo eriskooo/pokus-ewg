@@ -1,11 +1,11 @@
-package sk.lorman.service;
+package sk.lorman.pokus.ewg.service;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
-import sk.lorman.domain.Kamion;
-import sk.lorman.repository.KamionRepository;
+import sk.lorman.pokus.ewg.domain.Kamion;
+import sk.lorman.pokus.ewg.repository.KamionRepository;
 
 import java.util.List;
 
