@@ -31,6 +31,11 @@
     </dependencyManagement>
 
     <dependencies>
+        <!-- Health endpoints for Kubernetes probes (/q/health, /q/health/live, /q/health/ready) -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-smallrye-health</artifactId>
+        </dependency>
         <!-- JSON logging for ELK-friendly output -->
         <dependency>
             <groupId>io.quarkus</groupId>

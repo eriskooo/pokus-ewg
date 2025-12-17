@@ -16,3 +16,10 @@ spec:
             name: pokus-ewg
             port:
               number: 8080
+      - path: /q
+        pathType: Prefix
+        backend:
+          service:
+            name: pokus-ewg
+            port:
+              number: 8080
