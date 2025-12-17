@@ -51,7 +51,43 @@ Datasource defaults (local dev): H2 in-memory. See `src/main/resources/applicati
 - Outgoing channel `ktop-out` sends a startup message with the current timestamp when the app boots.
 - Incoming channel `ktop-in` logs received messages.
 
-Kafka connection is configured in `application.properties`. Tests/dev can use in-memory connectors (see `src/test/resources/application.properties`).
+Kafka connection is configured in `application.properties`. By default it points to `${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}` so:
+- Locally it uses `localhost:9092` if the env var is not set.
+- In Kubernetes it is provided via env var in the Deployment: `KAFKA_BOOTSTRAP_SERVERS=kafka:9092`.
+You can also override via the mounted ConfigMap by setting `mp.messaging.connector.smallrye-kafka.bootstrap.servers`.
+Tests/dev can use in-memory connectors (see `src/test/resources/application.properties`).
+
+### Kafka for Kubernetes (dev) — provided manifest
+For convenience, the `helm` folder contains a simple, single‑node Kafka‑API compatible broker using Redpanda. It is suitable for local/dev use on Docker Desktop Kubernetes.
+
+- Manifest: `helm/kafka.yaml`
+- Service: `kafka` (ClusterIP), port `9092` — your app connects to `kafka:9092` (already set in the Deployment env)
+- Topics: auto‑creation is enabled, so `my.first.topic` will be created on first use
+
+How to deploy it before the application:
+
+```
+kubectl apply -n pokus-ewg -f helm/kafka.yaml
+kubectl wait --for=condition=available deployment/kafka -n pokus-ewg --timeout=120s
+
+# then deploy the app
+kubectl apply -n pokus-ewg -f helm/configmap.yaml
+kubectl apply -n pokus-ewg -f helm/deployment.yaml
+kubectl apply -n pokus-ewg -f helm/service.yaml
+kubectl rollout restart deployment/pokus-ewg -n pokus-ewg
+kubectl rollout status deployment/pokus-ewg -n pokus-ewg
+```
+
+Optional: Redpanda admin API (port 9644) is exposed only inside the cluster. For debugging you can port‑forward:
+
+```
+kubectl -n pokus-ewg port-forward deploy/kafka 9644:9644
+curl http://localhost:9644/v1/status/ready
+```
+
+Troubleshooting:
+- If the app readiness shows DOWN because Kafka is not yet ready, wait for the `kafka` deployment to become available, or temporarily disable messaging health via ConfigMap (`quarkus.messaging.health.enabled=false`).
+- Ensure the Service name `kafka` is resolvable in the same namespace where the app runs.
 
 ## Build
 Standard build:
