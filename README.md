@@ -67,27 +67,75 @@ For convenience, the `helm` folder contains a simple, single‑node Kafka‑API 
 How to deploy it before the application:
 
 ```
-kubectl apply -n pokus-ewg -f helm/kafka.yaml
-kubectl wait --for=condition=available deployment/kafka -n pokus-ewg --timeout=120s
+kubectl apply -f helm/kafka.yaml
+kubectl wait --for=condition=available deployment/kafka --timeout=120s
 
 # then deploy the app
-kubectl apply -n pokus-ewg -f helm/configmap.yaml
-kubectl apply -n pokus-ewg -f helm/deployment.yaml
-kubectl apply -n pokus-ewg -f helm/service.yaml
-kubectl rollout restart deployment/pokus-ewg -n pokus-ewg
-kubectl rollout status deployment/pokus-ewg -n pokus-ewg
+kubectl apply -f helm/configmap.yaml
+kubectl apply -f helm/deployment.yaml
+kubectl apply -f helm/service.yaml
+kubectl rollout restart deployment/pokus-ewg
+kubectl rollout status deployment/pokus-ewg
 ```
 
 Optional: Redpanda admin API (port 9644) is exposed only inside the cluster. For debugging you can port‑forward:
 
 ```
-kubectl -n pokus-ewg port-forward deploy/kafka 9644:9644
+kubectl port-forward deploy/kafka 9644:9644
 curl http://localhost:9644/v1/status/ready
 ```
 
 Troubleshooting:
 - If the app readiness shows DOWN because Kafka is not yet ready, wait for the `kafka` deployment to become available, or temporarily disable messaging health via ConfigMap (`quarkus.messaging.health.enabled=false`).
 - Ensure the Service name `kafka` is resolvable in the same namespace where the app runs.
+
+### Logs and Kibana (optional)
+
+If you want to browse application/container logs in Kibana, simple dev manifests are provided in `helm`:
+
+- `helm/elasticsearch.yaml` — single-node Elasticsearch (security disabled for dev)
+- `helm/kibana.yaml` — Kibana connected to the above Elasticsearch
+- `helm/fluent-bit.yaml` — DaemonSet that ships Kubernetes container logs to Elasticsearch
+
+Deploy to the same namespace (example uses `pokus-ewg`):
+
+```
+kubectl apply -f helm/elasticsearch.yaml
+kubectl wait --for=condition=ready pod -l app=elasticsearch --timeout=180s
+
+kubectl apply -f helm/kibana.yaml
+kubectl wait --for=condition=available deployment/kibana --timeout=180s
+
+kubectl apply -f helm/fluent-bit.yaml
+```
+
+Where to find Kibana:
+
+- Inside the cluster: Service `kibana` on port `5601`
+- From your machine (port-forward):
+
+```
+kubectl port-forward svc/kibana 5601:5601
+```
+
+Then open http://localhost:5601 in your browser.
+
+First time in Kibana, create an index pattern `logstash-*` to see logs collected by Fluent Bit (it sends logs using the
+Logstash index format).
+
+Troubleshooting Kibana OOM (JavaScript heap out of memory):
+
+- If Kibana crashes with a message like "FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed -
+  JavaScript heap out of memory", apply the updated `helm/kibana.yaml` which:
+    - increases the container memory limit to 1Gi and request to 512Mi, and
+    - sets `NODE_OPTIONS=--max-old-space-size=1024` to align the Node.js heap with the container limit.
+- Redeploy after changes:
+
+```
+kubectl apply -f helm/kibana.yaml
+kubectl rollout restart deployment/kibana
+kubectl rollout status deployment/kibana
+```
 
 ## Build
 Standard build:
@@ -145,9 +193,9 @@ docker build -t lorma/pokus-ewg:snapshot .
 3) Deploy/rollout restart:
 
 ```
-kubectl apply -n pokus-ewg -f helm/deployment.yaml
-kubectl rollout restart deployment/pokus-ewg -n pokus-ewg
-kubectl rollout status deployment/pokus-ewg -n pokus-ewg
+kubectl apply -f helm/deployment.yaml
+kubectl rollout restart deployment/pokus-ewg
+kubectl rollout status deployment/pokus-ewg
 ```
 
 Note: Docker Desktop Kubernetes uses the same Docker daemon, so any image you see under "Images" in Docker Desktop is also available to the Kubernetes nodes on the same host.
@@ -248,7 +296,7 @@ How to open Swagger UI:
 
 ```
 # get the NodePort of the pokus-ewg service
-kubectl get svc pokus-ewg -n pokus-ewg -o jsonpath="{.spec.ports[0].nodePort}"
+kubectl get svc pokus-ewg -o jsonpath="{.spec.ports[0].nodePort}"
 ```
 
 - Docker Desktop (node on localhost):
@@ -257,7 +305,7 @@ kubectl get svc pokus-ewg -n pokus-ewg -o jsonpath="{.spec.ports[0].nodePort}"
 2) alternative via port-forward (without NodePort):
 
 ```
-kubectl -n pokus-ewg port-forward svc/pokus-ewg 8080:8080
+kubectl port-forward svc/pokus-ewg 8080:8080
 # then open in the browser
 http://localhost:8080/q/swagger-ui
 ```
