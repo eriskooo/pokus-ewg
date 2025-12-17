@@ -128,6 +128,7 @@ The helm directory contains plain Kubernetes manifests (not a Helm chart) that y
 - A ConfigMap with application.properties overriding app.random=nr2
 - A Deployment that mounts the ConfigMap and sets QUARKUS_CONFIG_LOCATIONS so Quarkus picks it up
 - A Service to expose the pod inside the cluster
+ - A Namespace resource (pokus-ewg) to keep things isolated
 
 Prerequisites:
 - A working Kubernetes cluster and kubectl configured to point to it
@@ -135,3 +136,60 @@ Prerequisites:
   - If you build the image locally from the Dockerfile, push it to your registry and update `helm/deployment.yaml` field `spec.template.spec.containers[0].image` to your name/tag
 
 Optional: build the image from the Dockerfile and push to your registry (example):
+
+### AWS EKS nasadenie – krok za krokom
+
+Nižšie je príkladový postup, ako aplikáciu nasadiť do AWS (ECR + EKS + voliteľne MSK):
+
+1) Build a push Docker image do ECR
+- Prihlásenie do AWS a získanie loginu do ECR:
+  - aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin <AWS_ACCOUNT_ID>.dkr.ecr.eu-central-1.amazonaws.com
+- Vytvoriť ECR repozitár (ak ešte neexistuje):
+  - aws ecr create-repository --repository-name pokus-ewg --region eu-central-1
+- Postaviť a otagovať image:
+  - ./mvnw -DskipTests package
+  - docker build -t pokus-ewg:snapshot .
+  - docker tag pokus-ewg:snapshot <AWS_ACCOUNT_ID>.dkr.ecr.eu-central-1.amazonaws.com/pokus-ewg:snapshot
+- Pushnúť do ECR:
+  - docker push <AWS_ACCOUNT_ID>.dkr.ecr.eu-central-1.amazonaws.com/pokus-ewg:snapshot
+
+2) Nastaviť Kubernetes namespace a manifesty
+- Vytvoriť namespace:
+  - kubectl apply -f helm/namespace.yaml
+- Upraviť image v helm/deployment.yaml na ECR URL:
+  - spec.template.spec.containers[0].image: <AWS_ACCOUNT_ID>.dkr.ecr.eu-central-1.amazonaws.com/pokus-ewg:snapshot
+- Service je nastavený na typ LoadBalancer (AWS vytvorí verejný NLB/ELB)
+
+3) Konfigurácia Kafka (AWS MSK alebo iný broker)
+- Ak používate AWS MSK (bez SASL/SSL vnútri VPC), nastavte v ConfigMap bootstrap servers:
+  - Otvorte helm/configmap.yaml a v časti application.properties odkomentujte/pridajte riadok:
+    mp.messaging.connector.smallrye-kafka.bootstrap.servers=b-1.msk-...:9092,b-2.msk-...:9092
+- Ak potrebujete SASL/SSL, odporúča sa použiť Kubernetes Secret s potrebnými client.properties a načítať ich cez env/volume. Táto ukážka to nezahŕňa, ale README obsahuje poznámky nižšie.
+
+4) Aplikovať manifesty do EKS
+- kubectl apply -n pokus-ewg -f helm/configmap.yaml
+- kubectl apply -n pokus-ewg -f helm/deployment.yaml
+- kubectl apply -n pokus-ewg -f helm/service.yaml
+- Overiť rollout:
+  - kubectl rollout status deployment/pokus-ewg -n pokus-ewg
+
+5) Získať verejnú adresu služby
+- kubectl get svc pokus-ewg -n pokus-ewg
+- Po vzniku externého adresára (EXTERNAL-IP) otvorte http://EXTERNAL-IP:8080/q/swagger-ui alebo /kamiony
+
+6) Logy a zdravie aplikácie
+- Liveness: /q/health/live
+- Readiness: /q/health/ready
+- Logy:
+  - kubectl logs -n pokus-ewg deploy/pokus-ewg
+  - JSON logging je v k8s zapnutý cez ConfigMap (vhodné pre CloudWatch/ELK)
+
+7) Aktualizácia verzie
+- Upravte image tag v deployment.yaml a použite rollout restart:
+  - kubectl apply -n pokus-ewg -f helm/deployment.yaml
+  - kubectl rollout restart deployment/pokus-ewg -n pokus-ewg
+  - kubectl rollout status deployment/pokus-ewg -n pokus-ewg
+
+Poznámky k bezpečnosti a sieti:
+- Ak chcete obmedziť prístup, použite Internal LoadBalancer anotácie (napr. service.beta.kubernetes.io/aws-load-balancer-internal: "true") a/alebo Ingress s ALB.
+- Pre Kafka cez TLS/SASL pripravte Secret a env premenné podľa požiadaviek MSK (SASL/SCRAM alebo IAM) a upravte SmallRye Kafka konfiguráciu (mp.messaging.*) v ConfigMap/Secret.

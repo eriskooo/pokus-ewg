@@ -9,6 +9,11 @@ data:
   application.properties: |
     # Override/custom properties for k8s
     app.random=nr2
+    
+    # Kafka bootstrap servers (override in AWS to point to MSK or your Kafka)
+    # Example for AWS MSK plaintext within VPC (adjust host:port list):
+    # mp.messaging.connector.smallrye-kafka.bootstrap.servers=b-1.msk-cluster.abcd.c2.kafka.eu-central-1.amazonaws.com:9092,b-2.msk-cluster.abcd.c2.kafka.eu-central-1.amazonaws.com:9092
+
     # Enable JSON logging in Kubernetes for ELK ingestion
     quarkus.log.console.json=true
     quarkus.log.console.json.fields=timestamp,level,loggerName,threadName,message,mdc,exception
