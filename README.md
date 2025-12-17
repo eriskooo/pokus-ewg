@@ -135,3 +135,39 @@ Prerequisites:
   - If you build the image locally from the Dockerfile, push it to your registry and update `helm/deployment.yaml` field `spec.template.spec.containers[0].image` to your name/tag
 
 Optional: build the image from the Dockerfile and push to your registry (example):
+
+### Ingress vs. Swagger UI (important)
+
+In this project, the Ingress is configured to expose only the REST API under the path `/kamiony/` (see `helm/ingress.yaml`).
+
+- Access via Ingress: suitable for API calls, for example:
+  - `http://<INGRESS_HOST>/kamiony/`
+  - `http://<INGRESS_HOST>/kamiony/{id}`
+
+- Swagger UI is NOT exposed through Ingress: the `http://.../q/swagger-ui` interface is not routed via Ingress in this setup. Swagger UI is available only through the Service of type NodePort (or via port-forward).
+
+How to open Swagger UI:
+
+1) via NodePort
+
+```
+# get the NodePort of the pokus-ewg service
+kubectl get svc pokus-ewg -n pokus-ewg -o jsonpath="{.spec.ports[0].nodePort}"
+```
+
+- Docker Desktop / kind (node on localhost):
+  - Swagger UI: `http://localhost:<NODEPORT>/q/swagger-ui`
+
+- minikube:
+  - get the IP: `minikube ip`
+  - Swagger UI: `http://<MINIKUBE_IP>:<NODEPORT>/q/swagger-ui`
+
+2) alternative via port-forward (without NodePort):
+
+```
+kubectl -n pokus-ewg port-forward svc/pokus-ewg 8080:8080
+# then open in the browser
+http://localhost:8080/q/swagger-ui
+```
+
+Note: If you want Swagger UI to be available via Ingress as well, you can add another path in `helm/ingress.yaml` (e.g., `/q/` or `/q/swagger-ui`) pointing to the same service. Consider security implications — in production Swagger UI is often not published via Ingress.
