@@ -123,18 +123,78 @@ Lombok `@Slf4j` is used for concise logging. Adjust log levels via `application.
 - The project uses up‑to‑date Quarkus/Hibernate/SmallRye/Flyway versions managed through the Quarkus 3.30.3 BOM.
 - Requires Java 21.
 
-## Deploy to Kubernetes using the helm directory
-The helm directory contains plain Kubernetes manifests (not a Helm chart) that you can apply directly with kubectl. They configure:
+## Health checks (readiness & liveness) and graceful shutdown
+
+This application exposes Kubernetes‑friendly health endpoints and is configured for graceful shutdown. You can use them locally and in Kubernetes.
+
+### Endpoints
+- Liveness: `GET /q/health/live` — is the app process alive (no fatal errors).
+- Readiness: `GET /q/health/ready` — is the app ready to receive traffic.
+- All health: `GET /q/health`.
+
+Examples:
+- Local: `http://localhost:8080/q/health/ready`
+- Via Ingress (if configured): `http://<INGRESS_HOST>/q/health/ready`
+
+### Kubernetes probes (configured in helm/deployment.yaml)
+The Deployment is already wired to these endpoints:
+
+```
+livenessProbe:
+  httpGet:
+    path: /q/health/live
+    port: 8080
+  initialDelaySeconds: 15
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /q/health/ready
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 5
+```
+
+Notes about readiness composition:
+- By default, Quarkus readiness includes several checks (e.g., database). Reactive Messaging (Kafka) health can also be included when enabled.
+- If you are running in Kubernetes without a reachable Kafka broker, enable/disable the messaging health accordingly to avoid keeping the pod unready:
+  - In `helm/configmap.yaml` you can set:
+    - `quarkus.messaging.health.enabled=true` to include Kafka in health (production, when Kafka is reachable).
+    - `quarkus.messaging.health.enabled=false` to exclude Kafka from health (development, when Kafka is not available to the cluster).
+
+### Graceful shutdown
+The app and Kubernetes are configured to shut down gracefully to minimize dropped requests:
+
+- Kubernetes (helm/deployment.yaml):
+  - `terminationGracePeriodSeconds: 30` — time given to the pod to shut down.
+  - `preStop` hook: `sleep 10` — gives time for endpoints to be removed from the Service and for inflight requests to drain before the process starts shutting down.
+- Quarkus (application.properties):
+  - `quarkus.http.graceful-shutdown=true` — stop accepting new HTTP connections during shutdown while allowing in‑flight ones to finish.
+  - `quarkus.shutdown.timeout=30s` — maximum time Quarkus will wait for ongoing work to complete.
+- Application code:
+  - `GracefulShutdown` bean observes `ShutdownEvent` and logs a message; a safe place for custom cleanup in the future.
+
+Shutdown sequence:
+1) Kubernetes removes the pod from Service endpoints; `preStop` waits 10s to let traffic drain.
+2) Kubernetes sends SIGTERM; Quarkus begins graceful shutdown and waits up to 30s for in‑flight work to complete.
+3) If the app does not exit within the grace period, Kubernetes will SIGKILL it.
+
+Troubleshooting:
+- If `/q/health/ready` reports DOWN because of Kafka when you don’t have Kafka reachable from the cluster, set `quarkus.messaging.health.enabled=false` via ConfigMap and restart the Deployment.
+
+## Deploy to Kubernetes on Docker Desktop (using the helm directory)
+The helm directory contains plain Kubernetes manifests (not a Helm chart) that you can apply directly with kubectl on Docker Desktop. They configure:
 - A ConfigMap with application.properties overriding app.random=nr2
 - A Deployment that mounts the ConfigMap and sets QUARKUS_CONFIG_LOCATIONS so Quarkus picks it up
 - A Service to expose the pod inside the cluster
 
 Prerequisites:
-- A working Kubernetes cluster and kubectl configured to point to it
-- A container image accessible by the cluster (the default in the manifests is `lorma/pokus-ewg:snapshot`)
-  - If you build the image locally from the Dockerfile, push it to your registry and update `helm/deployment.yaml` field `spec.template.spec.containers[0].image` to your name/tag
+- Docker Desktop with Kubernetes enabled, and kubectl context set to Docker Desktop
+- A local container image built as shown in the previous section (Docker Desktop shares the same image store with its Kubernetes)
 
-Optional: build the image from the Dockerfile and push to your registry (example):
+Notes for Docker Desktop:
+- `imagePullPolicy: IfNotPresent` is already set in `helm/deployment.yaml`, so the pod will use your locally built image without pulling from a registry.
+- If you change the image tag/name, update it in `helm/deployment.yaml` accordingly and redeploy.
 
 ### Ingress vs. Swagger UI (important)
 
@@ -155,12 +215,8 @@ How to open Swagger UI:
 kubectl get svc pokus-ewg -n pokus-ewg -o jsonpath="{.spec.ports[0].nodePort}"
 ```
 
-- Docker Desktop / kind (node on localhost):
+- Docker Desktop (node on localhost):
   - Swagger UI: `http://localhost:<NODEPORT>/q/swagger-ui`
-
-- minikube:
-  - get the IP: `minikube ip`
-  - Swagger UI: `http://<MINIKUBE_IP>:<NODEPORT>/q/swagger-ui`
 
 2) alternative via port-forward (without NodePort):
 
@@ -170,4 +226,4 @@ kubectl -n pokus-ewg port-forward svc/pokus-ewg 8080:8080
 http://localhost:8080/q/swagger-ui
 ```
 
-Note: If you want Swagger UI to be available via Ingress as well, you can add another path in `helm/ingress.yaml` (e.g., `/q/` or `/q/swagger-ui`) pointing to the same service. Consider security implications — in production Swagger UI is often not published via Ingress.
+Note: The repository currently exposes `/q` through the Ingress so health endpoints are reachable. If you also want to expose Swagger UI, access it at `http://<INGRESS_HOST>/q/swagger-ui` (consider securing it in production).
