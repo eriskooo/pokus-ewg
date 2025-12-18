@@ -1,0 +1,397 @@
+/*
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
+ *
+ * Copyright (c) 2011-2015 Oracle and/or its affiliates. All rights reserved.
+ *
+ * The contents of this file are subject to the terms of either the GNU
+ * General Public License Version 2 only ("GPL") or the Common Development
+ * and Distribution License("CDDL") (collectively, the "License").  You
+ * may not use this file except in compliance with the License.  You can
+ * obtain a copy of the License at
+ * http://glassfish.java.net/public/CDDL+GPL_1_1.html
+ * or packager/legal/LICENSE.txt.  See the License for the specific
+ * language governing permissions and limitations under the License.
+ *
+ * When distributing the software, include this License Header Notice in each
+ * file and include the License file at packager/legal/LICENSE.txt.
+ *
+ * GPL Classpath Exception:
+ * Oracle designates this particular file as subject to the "Classpath"
+ * exception as provided by Oracle in the GPL Version 2 section of the License
+ * file that accompanied this code.
+ *
+ * Modifications:
+ * If applicable, add the following below the License Header, with the fields
+ * enclosed by brackets [] replaced by your own identifying information:
+ * "Portions Copyright [year] [name of copyright owner]"
+ *
+ * Contributor(s):
+ * If you wish your version of this file to be governed by only the CDDL or
+ * only the GPL Version 2, indicate your decision by adding "[Contributor]
+ * elects to include this software in this distribution under the [CDDL or GPL
+ * Version 2] license."  If you don't indicate a single choice of license, a
+ * recipient has the option to distribute your version of this file under
+ * either the CDDL, the GPL Version 2 or to extend the choice of license to
+ * its licensees as provided above.  However, if you add GPL Version 2 code
+ * and therefore, elected the GPL Version 2 license, then the option applies
+ * only if the new code is made subject to such option by the copyright
+ * holder.
+ */
+package sk.lorman.pokus.ewg.util;
+
+
+import io.vertx.core.Vertx;
+import jakarta.annotation.Priority;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.client.ClientRequestContext;
+import jakarta.ws.rs.client.ClientRequestFilter;
+import jakarta.ws.rs.client.ClientResponseContext;
+import jakarta.ws.rs.client.ClientResponseFilter;
+import jakarta.ws.rs.container.ContainerRequestContext;
+import jakarta.ws.rs.container.ContainerRequestFilter;
+import jakarta.ws.rs.container.ContainerResponseContext;
+import jakarta.ws.rs.container.ContainerResponseFilter;
+import jakarta.ws.rs.core.MultivaluedMap;
+import jakarta.ws.rs.ext.Provider;
+import jakarta.ws.rs.ext.WriterInterceptor;
+import jakarta.ws.rs.ext.WriterInterceptorContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.*;
+import java.net.URI;
+import java.nio.charset.Charset;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
+
+import static jakarta.ws.rs.core.MediaType.APPLICATION_OCTET_STREAM_TYPE;
+
+@Provider
+@Priority(1)
+public class TraceLogFilter implements ContainerRequestFilter, ClientRequestFilter, ContainerResponseFilter,
+        ClientResponseFilter, WriterInterceptor {
+
+    private static final Logger DEFAULT_LOGGER = LoggerFactory.getLogger(TraceLogFilter.class);
+    private static final String NOTIFICATION_PREFIX = "* ";
+    private static final String REQUEST_PREFIX = "> ";
+    private static final String RESPONSE_PREFIX = "< ";
+    private static final String ENTITY_LOGGER_PROPERTY = TraceLogFilter.class.getName() + ".entityLogger";
+    private static final String LOGGING_ID_PROPERTY = TraceLogFilter.class.getName() + ".id";
+    private static final String THREAD_ID_PROPERTY = TraceLogFilter.class.getName() + ".threadId";
+    private static final String CONTENT_TYPE_HEADER_NAME = "Content-Type";
+
+    private static final Comparator<Map.Entry<String, List<String>>> COMPARATOR = (oO1, oO2) -> oO1.getKey().compareToIgnoreCase(oO2.getKey());
+
+    private static final int DEFAULT_MAX_ENTITY_SIZE = 8 * 1024;
+
+    private final Logger logger;
+    private final AtomicLong aLong = new AtomicLong(0);
+    private final boolean printEntity;
+    private final int maxEntitySize;
+
+    /**
+     * Create a logging filter logging the request and response to a default JDK
+     * logger, named as the fully qualified class name of this class. Entity
+     * logging is turned off by default.
+     */
+    public TraceLogFilter() {
+        this(DEFAULT_LOGGER, true);
+    }
+
+    /**
+     * Create a logging filter with custom logger and custom settings of entity
+     * logging.
+     *
+     * @param logger      the logger to log requests and responses.
+     * @param printEntity if true, entity will be logged as well up to the default maxEntitySize, which is 8KB
+     */
+    @SuppressWarnings("BooleanParameter")
+    public TraceLogFilter(final Logger logger, final boolean printEntity) {
+        this.logger = logger;
+        this.printEntity = printEntity;
+        this.maxEntitySize = DEFAULT_MAX_ENTITY_SIZE;
+    }
+
+    /**
+     * Creates a logging filter with custom logger and entity logging turned on, but potentially limiting the size
+     * of entity to be buffered and logged.
+     *
+     * @param logger        the logger to log requests and responses.
+     * @param maxEntitySize maximum number of entity bytes to be logged (and buffered) - if the entity is larger,
+     *                      logging filter will print (and buffer in memory) only the specified number of bytes
+     *                      and print "...more..." string at the end. Negative values are interpreted as zero.
+     */
+    public TraceLogFilter(final Logger logger, final int maxEntitySize) {
+        this.logger = logger;
+        this.printEntity = true;
+        this.maxEntitySize = Math.max(0, maxEntitySize);
+    }
+
+    private void log(final StringBuilder b) {
+        if (logger != null) {
+            logger.info(b.toString());
+        }
+    }
+
+    private StringBuilder prefixId(final StringBuilder b, final long id, final String threadId) {
+        b.append(LocalDateTime.now()).append(" [").append(threadId).append("] ");
+        b.append(Long.toString(id)).append(" ");
+        return b;
+    }
+
+    private void printRequestLine(final StringBuilder b, final String note, final long id, final String method, final URI uri, final String threadId) {
+        prefixId(b, id, threadId).append(NOTIFICATION_PREFIX)
+                .append(note)
+                .append(" on thread ").append(threadId)
+                .append("\n");
+        prefixId(b, id, threadId).append(REQUEST_PREFIX).append(method).append(" ")
+                .append(uri.toASCIIString()).append("\n");
+    }
+
+    private void printResponseLine(final StringBuilder b, final String note, final long id, final int status, final String threadId) {
+        prefixId(b, id, threadId).append(NOTIFICATION_PREFIX)
+                .append(note)
+                .append(" on thread ").append(threadId).append("\n");
+        prefixId(b, id, threadId).append(RESPONSE_PREFIX)
+                .append(Integer.toString(status))
+                .append("\n");
+    }
+
+    private void printPrefixedHeaders(final StringBuilder b,
+                                      final long id,
+                                      final String prefix,
+                                      final MultivaluedMap<String, String> headers, final String threadId) {
+        if (headers == null) {
+            return;
+        }
+        for (final Map.Entry<String, List<String>> headerEntry : getSortedHeaders(headers.entrySet())) {
+            final List<?> val = headerEntry.getValue();
+            final String header = headerEntry.getKey();
+
+            if (val.size() == 1) {
+                prefixId(b, id, threadId).append(prefix).append(header).append(": ").append(val.get(0)).append("\n");
+            } else {
+                final StringBuilder sb = new StringBuilder();
+                boolean add = false;
+                for (final Object s : val) {
+                    if (add) {
+                        sb.append(',');
+                    }
+                    add = true;
+                    sb.append(s);
+                }
+                prefixId(b, id, threadId).append(prefix).append(header).append(": ").append(sb.toString()).append("\n");
+            }
+        }
+    }
+
+    /**
+     * Detect if we are currently on the Vert.x event-loop (reactive IO) thread.
+     * When on the event-loop, we must not perform blocking operations like reading
+     * request/response InputStreams.
+     */
+    private boolean isOnEventLoop() {
+        try {
+            var ctx = Vertx.currentContext();
+            return ctx != null && ctx.isEventLoopContext();
+        } catch (NoClassDefFoundError | Exception ignored) {
+            // Vert.x not present or any unexpected issue – assume not on event loop
+            return false;
+        }
+    }
+
+    private Set<Map.Entry<String, List<String>>> getSortedHeaders(final Set<Map.Entry<String, List<String>>> headers) {
+        final TreeSet<Map.Entry<String, List<String>>> sortedHeaders = new TreeSet<>(COMPARATOR);
+        sortedHeaders.addAll(headers);
+        return sortedHeaders;
+    }
+
+    private InputStream logInboundEntity(final Long id, final StringBuilder b, final InputStream stream, final String prefix, final Charset charset,
+                                         final String threadId)
+            throws IOException {
+        stream.mark(maxEntitySize + 1);
+        final byte[] entity = new byte[maxEntitySize + 1];
+        final int entitySize = stream.read(entity);
+        if (entitySize != -1) {
+            prefixId(b, id, threadId).append(prefix);
+            b.append(new String(entity, 0, Math.min(entitySize, maxEntitySize), charset));
+        }
+        if (entitySize > maxEntitySize) {
+            b.append("...more...");
+        }
+        b.append('\n');
+        stream.reset();
+        return stream;
+    }
+
+    @Override
+    public void filter(final ClientRequestContext context) throws IOException {
+        final long id = aLong.incrementAndGet();
+        context.setProperty(LOGGING_ID_PROPERTY, id);
+
+        final String threadId = Thread.currentThread().getName();
+        context.setProperty(THREAD_ID_PROPERTY, threadId);
+
+        final StringBuilder b = new StringBuilder();
+
+        printRequestLine(b, "Sending client request", id, context.getMethod(), context.getUri(), threadId);
+        printPrefixedHeaders(b, id, REQUEST_PREFIX, context.getStringHeaders(), threadId);
+
+        if (printEntity && context.hasEntity()) {
+            if (isOnEventLoop()) {
+                prefixId(b, id, threadId).append(NOTIFICATION_PREFIX)
+                        .append("Skipping client request entity logging on event-loop thread to avoid blocking\n");
+            } else {
+                prefixId(b, id, threadId).append(REQUEST_PREFIX).append(JsonUtils.toJson(context.getEntity()));
+            }
+        }
+
+        log(b);
+    }
+
+    @Override
+    public void filter(final ClientRequestContext requestContext, final ClientResponseContext responseContext)
+            throws IOException {
+        final Object requestId = requestContext.getProperty(LOGGING_ID_PROPERTY);
+        final long id = requestId != null ? (Long) requestId : aLong.incrementAndGet();
+
+        final String threadId = String.valueOf(requestContext.getProperty(THREAD_ID_PROPERTY));
+
+        final StringBuilder b = new StringBuilder();
+
+        printResponseLine(b, "Client response received", id, responseContext.getStatus(), threadId);
+        printPrefixedHeaders(b, id, RESPONSE_PREFIX, responseContext.getHeaders(), threadId);
+
+        if (printEntity && responseContext.hasEntity()
+                && !APPLICATION_OCTET_STREAM_TYPE.equals(responseContext.getMediaType())
+                && !isOctetStreamOrZipOrPdf(responseContext.getHeaderString(CONTENT_TYPE_HEADER_NAME))) {
+            if (isOnEventLoop()) {
+                prefixId(b, id, threadId).append(NOTIFICATION_PREFIX)
+                        .append("Skipping client response entity logging on event-loop thread to avoid blocking\n");
+            } else {
+                InputStream stream = responseContext.getEntityStream();
+                if (!stream.markSupported()) {
+                    stream = new BufferedInputStream(stream);
+                }
+                responseContext.setEntityStream(
+                        logInboundEntity(id, b, stream, RESPONSE_PREFIX, Charset.defaultCharset(), threadId));
+            }
+        }
+
+        log(b);
+    }
+
+    @Override
+    public void filter(final ContainerRequestContext context) throws IOException {
+        final long id = aLong.incrementAndGet();
+        context.setProperty(LOGGING_ID_PROPERTY, id);
+
+        final String threadId = Thread.currentThread().getName();
+        context.setProperty(THREAD_ID_PROPERTY, threadId);
+
+        final StringBuilder b = new StringBuilder();
+
+        printRequestLine(b, "Server has received a request", id, context.getMethod(), context.getUriInfo().getRequestUri(), threadId);
+        printPrefixedHeaders(b, id, REQUEST_PREFIX, context.getHeaders(), threadId);
+
+        if (printEntity && context.hasEntity()
+                && !APPLICATION_OCTET_STREAM_TYPE.equals(context.getMediaType())
+                && !isOctetStreamOrZipOrPdf(context.getHeaderString(CONTENT_TYPE_HEADER_NAME))) {
+            if (isOnEventLoop()) {
+                prefixId(b, id, threadId).append(NOTIFICATION_PREFIX)
+                        .append("Skipping server request entity logging on event-loop thread to avoid blocking\n");
+            } else {
+                InputStream stream = context.getEntityStream();
+                if (!stream.markSupported()) {
+                    stream = new BufferedInputStream(stream);
+                }
+                context.setEntityStream(
+                        logInboundEntity(id, b, stream, REQUEST_PREFIX, Charset.defaultCharset(), threadId));
+            }
+        }
+
+        log(b);
+    }
+
+    @Override
+    public void filter(final ContainerRequestContext requestContext, final ContainerResponseContext responseContext)
+            throws IOException {
+        final Object requestId = requestContext.getProperty(LOGGING_ID_PROPERTY);
+        final long id = requestId != null ? (Long) requestId : aLong.incrementAndGet();
+
+        final String threadId = String.valueOf(requestContext.getProperty(THREAD_ID_PROPERTY));
+
+        final StringBuilder b = new StringBuilder();
+
+        printResponseLine(b, "Server responded with a response", id, responseContext.getStatus(), threadId);
+        printPrefixedHeaders(b, id, RESPONSE_PREFIX, responseContext.getStringHeaders(), threadId);
+
+        if (printEntity && responseContext.hasEntity()
+                && !APPLICATION_OCTET_STREAM_TYPE.equals(responseContext.getMediaType())
+                && !isOctetStreamOrZipOrPdf(responseContext.getHeaderString(CONTENT_TYPE_HEADER_NAME))) {
+            // For server response we can safely wrap the output stream even on the event-loop,
+            // because we don't perform any blocking reads here; we just tee what's being written.
+            prefixId(b, id, threadId).append(RESPONSE_PREFIX);
+            final OutputStream stream = new LoggingStream(b, responseContext.getEntityStream());
+            responseContext.setEntityStream(stream);
+            requestContext.setProperty(ENTITY_LOGGER_PROPERTY, stream);
+            // not calling log(b) here - it will be called by the interceptor
+        } else {
+            log(b);
+        }
+    }
+
+    @Override
+    public void aroundWriteTo(final WriterInterceptorContext writerInterceptorContext)
+            throws IOException, WebApplicationException {
+        LoggingStream stream = (LoggingStream) writerInterceptorContext.getProperty(ENTITY_LOGGER_PROPERTY);
+        try {
+            writerInterceptorContext.proceed();
+            if (stream != null) {
+                this.log(stream.getStringBuilder(Charset.defaultCharset()));
+            }
+        } catch (Exception ex) {
+            logger.error("TraceLogFilter aroundWriteTo exception", ex);
+        }
+    }
+
+    private boolean isOctetStreamOrZipOrPdf(String contentTypeHeader) {
+        return "application/octet-stream".equalsIgnoreCase(contentTypeHeader)
+                || "application/zip".equalsIgnoreCase(contentTypeHeader)
+                || "application/pdf".equalsIgnoreCase(contentTypeHeader);
+    }
+
+    private class LoggingStream extends FilterOutputStream {
+
+        private final StringBuilder b;
+        private final ByteArrayOutputStream baos = new ByteArrayOutputStream();
+
+        LoggingStream(final StringBuilder b, final OutputStream inner) {
+            super(inner);
+
+            this.b = b;
+        }
+
+        StringBuilder getStringBuilder(final Charset charset) {
+            // write entity to the builder
+            final byte[] entity = baos.toByteArray();
+
+            b.append(new String(entity, 0, Math.min(entity.length, maxEntitySize), charset));
+            if (entity.length > maxEntitySize) {
+                b.append("...more...");
+            }
+            b.append('\n');
+
+            return b;
+        }
+
+        @Override
+        public void write(final int i) throws IOException {
+            if (baos.size() <= maxEntitySize) {
+                baos.write(i);
+            }
+            out.write(i);
+        }
+    }
+}

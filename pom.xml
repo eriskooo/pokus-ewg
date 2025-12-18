@@ -104,6 +104,12 @@
             <artifactId>rest-assured</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.github.tomakehurst</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <version>3.0.0-beta-8</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

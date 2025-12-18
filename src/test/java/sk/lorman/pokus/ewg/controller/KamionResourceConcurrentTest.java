@@ -1,16 +1,20 @@
 package sk.lorman.pokus.ewg.controller;
 
+import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
+import io.restassured.RestAssured;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import sk.lorman.pokus.ewg.wiremock.MyWireMockResource;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 
-import static io.restassured.RestAssured.given;
-
+@Slf4j
 @QuarkusTest
+@QuarkusTestResource(MyWireMockResource.class)
 class KamionResourceConcurrentTest {
 
     @Test
@@ -24,7 +28,7 @@ class KamionResourceConcurrentTest {
             futures.add(pool.submit(() -> {
                 // wait until all workers are ready to start at the same time
                 barrier.await(10, TimeUnit.SECONDS);
-                return given()
+                return RestAssured.given()
                         .when()
                         .get("/kamiony/")
                         .then()
