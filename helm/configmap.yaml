@@ -11,7 +11,7 @@ data:
     app.random=nr2
     # Enable JSON logging in Kubernetes for ELK ingestion
     quarkus.log.console.json=true
-    quarkus.log.console.json.fields=timestamp,level,loggerName,threadName,message,traceId,mdc,exception
+    quarkus.log.console.json.fields=timestamp,level,loggerName,threadName,message,mdc,exception
     quarkus.log.console.json.field-names.timestamp=@timestamp
     quarkus.log.console.json.field-names.level=level
     quarkus.log.console.json.field-names.loggerName=logger
