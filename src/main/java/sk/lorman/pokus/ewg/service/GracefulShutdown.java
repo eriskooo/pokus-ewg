@@ -1,10 +1,9 @@
 package sk.lorman.pokus.ewg.service;
 
+import io.quarkus.runtime.ShutdownEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import lombok.extern.slf4j.Slf4j;
-
-import io.quarkus.runtime.ShutdownEvent;
 
 @ApplicationScoped
 @Slf4j

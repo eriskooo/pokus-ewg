@@ -3,6 +3,7 @@ package sk.lorman.pokus.ewg.service;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import jakarta.validation.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import sk.lorman.pokus.ewg.domain.Kamion;
@@ -46,7 +47,7 @@ class KamionServiceTest {
         invalid.spz = null;
         invalid.znacka = "X";
         invalid.nosnostKg = 1;
-        assertThrows(IllegalArgumentException.class, () -> service.create(invalid));
+        assertThrows(ConstraintViolationException.class, () -> service.create(invalid));
     }
 
     @Test

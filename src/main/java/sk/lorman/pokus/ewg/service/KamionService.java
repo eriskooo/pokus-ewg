@@ -4,6 +4,7 @@ import io.opentelemetry.instrumentation.annotations.WithSpan;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import sk.lorman.pokus.ewg.domain.Kamion;
 import sk.lorman.pokus.ewg.repository.KamionRepository;
@@ -30,10 +31,9 @@ public class KamionService {
     }
 
     @Transactional
-    public Kamion create(Kamion input) {
-        if (input == null || input.spz == null || input.znacka == null || input.nosnostKg == null) {
-            throw new IllegalArgumentException("Neplatné dáta");
-        }
+    public Kamion create(@Valid Kamion input) {
+        // Validácia vstupu je riešená na úrovni controlleru (Bean Validation)
+        // a počas perzistencie (Hibernate Validator). Servisná vrstva nerobí null kontroly.
         log.info("Creating Kamion spz={}, znacka={}", input.spz, input.znacka);
         input.id = null; // ensure new
         repository.persist(input);
