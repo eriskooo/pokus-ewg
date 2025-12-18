@@ -40,6 +40,8 @@
 package sk.lorman.pokus.ewg.util;
 
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
 import io.vertx.core.Vertx;
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.WebApplicationException;
@@ -57,6 +59,7 @@ import jakarta.ws.rs.ext.WriterInterceptor;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import java.io.*;
 import java.net.URI;
@@ -80,6 +83,9 @@ public class TraceLogFilter implements ContainerRequestFilter, ClientRequestFilt
     private static final String LOGGING_ID_PROPERTY = TraceLogFilter.class.getName() + ".id";
     private static final String THREAD_ID_PROPERTY = TraceLogFilter.class.getName() + ".threadId";
     private static final String CONTENT_TYPE_HEADER_NAME = "Content-Type";
+    private static final String TRACE_ID_PROPERTY = TraceLogFilter.class.getName() + ".traceId";
+    private static final String TRACE_ID_HEADER = "X-Trace-Id";
+    private static final String MDC_TRACE_ID_KEY = "traceId";
 
     private static final Comparator<Map.Entry<String, List<String>>> COMPARATOR = (oO1, oO2) -> oO1.getKey().compareToIgnoreCase(oO2.getKey());
 
@@ -131,6 +137,21 @@ public class TraceLogFilter implements ContainerRequestFilter, ClientRequestFilt
     private void log(final StringBuilder b) {
         if (logger != null) {
             logger.info(b.toString());
+        }
+    }
+
+    private String currentTraceIdOrGenerate() {
+        try {
+            Span span = Span.current();
+            SpanContext sc = span != null ? span.getSpanContext() : SpanContext.getInvalid();
+            String traceId = (sc != null && sc.isValid()) ? sc.getTraceId() : null;
+            if (traceId == null || traceId.isBlank()) {
+                // Fallback generation when no active span (should be rare if Quarkus OTEL is enabled)
+                return UUID.randomUUID().toString().replace("-", "");
+            }
+            return traceId;
+        } catch (Throwable t) {
+            return UUID.randomUUID().toString().replace("-", "");
         }
     }
 
@@ -290,9 +311,20 @@ public class TraceLogFilter implements ContainerRequestFilter, ClientRequestFilt
         final String threadId = Thread.currentThread().getName();
         context.setProperty(THREAD_ID_PROPERTY, threadId);
 
+        // Ensure there is a traceId associated with this request: prefer incoming header, otherwise derive from OTEL span or generate
+        String incomingTraceId = context.getHeaderString(TRACE_ID_HEADER);
+        String traceId = (incomingTraceId != null && !incomingTraceId.isBlank()) ? incomingTraceId : currentTraceIdOrGenerate();
+        context.setProperty(TRACE_ID_PROPERTY, traceId);
+        // Put traceId into MDC so it's available in all logs for this request
+        try {
+            MDC.put(MDC_TRACE_ID_KEY, traceId);
+        } catch (Exception ignored) {
+            // safeguard: never fail the request because of MDC operations
+        }
+
         final StringBuilder b = new StringBuilder();
 
-        printRequestLine(b, "Server has received a request", id, context.getMethod(), context.getUriInfo().getRequestUri(), threadId);
+        printRequestLine(b, "Server has received a request [traceId=" + traceId + "]", id, context.getMethod(), context.getUriInfo().getRequestUri(), threadId);
         printPrefixedHeaders(b, id, REQUEST_PREFIX, context.getHeaders(), threadId);
 
         if (printEntity && context.hasEntity()
@@ -321,10 +353,16 @@ public class TraceLogFilter implements ContainerRequestFilter, ClientRequestFilt
         final long id = requestId != null ? (Long) requestId : aLong.incrementAndGet();
 
         final String threadId = String.valueOf(requestContext.getProperty(THREAD_ID_PROPERTY));
+        final String traceId = String.valueOf(requestContext.getProperty(TRACE_ID_PROPERTY));
 
         final StringBuilder b = new StringBuilder();
 
-        printResponseLine(b, "Server responded with a response", id, responseContext.getStatus(), threadId);
+        // Add trace id header to the response so downstream/clients can correlate
+        if (traceId != null && !traceId.equals("null")) {
+            responseContext.getHeaders().putSingle(TRACE_ID_HEADER, traceId);
+        }
+
+        printResponseLine(b, "Server responded with a response [traceId=" + traceId + "]", id, responseContext.getStatus(), threadId);
         printPrefixedHeaders(b, id, RESPONSE_PREFIX, responseContext.getStringHeaders(), threadId);
 
         if (printEntity && responseContext.hasEntity()
@@ -339,6 +377,11 @@ public class TraceLogFilter implements ContainerRequestFilter, ClientRequestFilt
             // not calling log(b) here - it will be called by the interceptor
         } else {
             log(b);
+            // No entity logging interceptor will be invoked; cleanup MDC here
+            try {
+                MDC.remove(MDC_TRACE_ID_KEY);
+            } catch (Exception ignored) {
+            }
         }
     }
 
@@ -353,6 +396,12 @@ public class TraceLogFilter implements ContainerRequestFilter, ClientRequestFilt
             }
         } catch (Exception ex) {
             logger.error("TraceLogFilter aroundWriteTo exception", ex);
+        } finally {
+            // Ensure MDC is cleared after the response entity has been fully written & logged
+            try {
+                MDC.remove(MDC_TRACE_ID_KEY);
+            } catch (Exception ignored) {
+            }
         }
     }
 

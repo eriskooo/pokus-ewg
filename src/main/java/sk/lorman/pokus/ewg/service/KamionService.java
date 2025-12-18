@@ -1,5 +1,6 @@
 package sk.lorman.pokus.ewg.service;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -9,6 +10,7 @@ import sk.lorman.pokus.ewg.repository.KamionRepository;
 
 import java.util.List;
 
+
 @ApplicationScoped
 @Slf4j
 public class KamionService {
@@ -16,6 +18,7 @@ public class KamionService {
     @Inject
     KamionRepository repository;
 
+    @WithSpan
     public List<Kamion> listAll() {
         log.debug("Listing all Kamion entities");
         return repository.listAll();

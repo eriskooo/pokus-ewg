@@ -67,21 +67,21 @@ For convenience, the `helm` folder contains a simple, single‑node Kafka‑API 
 How to deploy it before the application:
 
 ```
-kubectl apply -n pokus-ewg -f helm/kafka.yaml
-kubectl wait --for=condition=available deployment/kafka -n pokus-ewg --timeout=120s
+kubectl apply -f helm/kafka.yaml
+kubectl wait --for=condition=available deployment/kafka --timeout=120s
 
 # then deploy the app
-kubectl apply -n pokus-ewg -f helm/configmap.yaml
-kubectl apply -n pokus-ewg -f helm/deployment.yaml
-kubectl apply -n pokus-ewg -f helm/service.yaml
-kubectl rollout restart deployment/pokus-ewg -n pokus-ewg
-kubectl rollout status deployment/pokus-ewg -n pokus-ewg
+kubectl apply -f helm/configmap.yaml
+kubectl apply -f helm/deployment.yaml
+kubectl apply -f helm/service.yaml
+kubectl rollout restart deployment/pokus-ewg
+kubectl rollout status deployment/pokus-ewg
 ```
 
 Optional: Redpanda admin API (port 9644) is exposed only inside the cluster. For debugging you can port‑forward:
 
 ```
-kubectl -n pokus-ewg port-forward deploy/kafka 9644:9644
+kubectl port-forward deploy/kafka 9644:9644
 curl http://localhost:9644/v1/status/ready
 ```
 
@@ -145,9 +145,9 @@ docker build -t lorma/pokus-ewg:snapshot .
 3) Deploy/rollout restart:
 
 ```
-kubectl apply -n pokus-ewg -f helm/deployment.yaml
-kubectl rollout restart deployment/pokus-ewg -n pokus-ewg
-kubectl rollout status deployment/pokus-ewg -n pokus-ewg
+kubectl apply -f helm/deployment.yaml
+kubectl rollout restart deployment/pokus-ewg
+kubectl rollout status deployment/pokus-ewg
 ```
 
 Note: Docker Desktop Kubernetes uses the same Docker daemon, so any image you see under "Images" in Docker Desktop is also available to the Kubernetes nodes on the same host.
@@ -248,7 +248,7 @@ How to open Swagger UI:
 
 ```
 # get the NodePort of the pokus-ewg service
-kubectl get svc pokus-ewg -n pokus-ewg -o jsonpath="{.spec.ports[0].nodePort}"
+kubectl get svc pokus-ewg -o jsonpath="{.spec.ports[0].nodePort}"
 ```
 
 - Docker Desktop (node on localhost):
@@ -257,9 +257,64 @@ kubectl get svc pokus-ewg -n pokus-ewg -o jsonpath="{.spec.ports[0].nodePort}"
 2) alternative via port-forward (without NodePort):
 
 ```
-kubectl -n pokus-ewg port-forward svc/pokus-ewg 8080:8080
+kubectl port-forward svc/pokus-ewg 8080:8080
 # then open in the browser
 http://localhost:8080/q/swagger-ui
 ```
 
 Note: The repository currently exposes `/q` through the Ingress so health endpoints are reachable. If you also want to expose Swagger UI, access it at `http://<INGRESS_HOST>/q/swagger-ui` (consider securing it in production).
+
+## OpenTelemetry tracing and Jaeger UI (how to explore traces)
+
+This project is instrumented with OpenTelemetry and exports traces to an OTLP endpoint. A Jaeger all‑in‑one Deployment
+and Service are provided under `helm/jaeger.yaml` so you can explore traces in the Jaeger web UI.
+
+### 1) Deploy Jaeger to your cluster
+
+```
+kubectl create ns pokus-ewg --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f helm/jaeger.yaml
+kubectl wait --for=condition=available deployment/jaeger --timeout=120s
+```
+
+What it creates:
+
+- Service `jaeger` (ports: 4317 gRPC OTLP, 4318 HTTP OTLP, 16686 UI)
+- Deployment `jaeger` with the Jaeger all‑in‑one image
+
+### 2) Open the Jaeger web UI
+
+Port‑forward the Jaeger UI service port and open it in your browser:
+
+```
+kubectl port-forward svc/jaeger 16686:16686
+# Browser:
+http://localhost:16686
+```
+
+### Service spans and DB telemetry (what you will see in Jaeger)
+
+- Service layer (REST → service):
+    - Calling the REST endpoint `GET /kamiony` invokes the method `KamionService.listAll()`,
+      which is annotated with `@WithSpan`. This annotation creates a separate child span
+      under the HTTP server span of the request. In Jaeger you will see a span named
+      approximately `KamionService.listAll` nested under the span for `GET /kamiony`.
+    - The other service methods (`getById`, `create`, `update`, `delete`) are not
+      explicitly annotated with `@WithSpan`, but correlation still happens within the
+      same trace — especially when interacting with the database (see below).
+
+- Database telemetry (JDBC/Hibernate):
+    - In `application.properties`, DB telemetry is enabled via
+      `quarkus.datasource.jdbc.telemetry=true`. This means Quarkus OpenTelemetry
+      extensions emit spans for JDBC/Hibernate operations (e.g., SQL queries,
+      transactions, commits).
+    - In Jaeger these JDBC/Hibernate spans appear as child spans under the
+      corresponding service/HTTP span. This also applies to the H2 database used in
+      the local environment.
+    - If you want to temporarily disable DB telemetry, set
+      `quarkus.datasource.jdbc.telemetry=false`.
+
+- Correlation via logs and headers:
+    - Every response contains the `X-Trace-Id` header and the same `traceId` is put
+      into the logging MDC (`[%X{traceId}]`). This makes it easy to correlate logs
+      with a specific trace in Jaeger.
