@@ -68,6 +68,18 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-messaging-kafka</artifactId>
         </dependency>
+        <!-- In-memory connector for dev profile wiring -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-messaging</artifactId>
+        </dependency>
+        <!-- Quarkus in-memory connector extension for dev wiring -->
+        <!-- Use SmallRye in-memory connector directly; provides connector name 'smallrye-in-memory' -->
+        <dependency>
+            <groupId>io.smallrye.reactive</groupId>
+            <artifactId>smallrye-reactive-messaging-in-memory</artifactId>
+            <version>4.20.0</version>
+        </dependency>
         <!-- SLF4J -> JBoss LogManager bridge used by Quarkus runtime -->
         <dependency>
             <groupId>org.jboss.slf4j</groupId>
