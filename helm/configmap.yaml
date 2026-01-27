@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: pokus-ewg-config
+  name: quarkus-latest-ref-config
   labels:
-    app: pokus-ewg
+    app: quarkus-latest-ref
 data:
   # Quarkus will look for application.properties in QUARKUS_CONFIG_LOCATIONS
   application.properties: |

@@ -1,25 +1,26 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: pokus-ewg
+  name: quarkus-latest-ref
   labels:
-    app: pokus-ewg
+    app: quarkus-latest-ref
 spec:
   ingressClassName: nginx
   rules:
+    #  - host: quarkus-latest-ref.local
   - http:
       paths:
       - path: /kamiony
         pathType: Prefix
         backend:
           service:
-            name: pokus-ewg
+            name: quarkus-latest-ref
             port:
               number: 8080
       - path: /q
         pathType: Prefix
         backend:
           service:
-            name: pokus-ewg
+            name: quarkus-latest-ref
             port:
               number: 8080

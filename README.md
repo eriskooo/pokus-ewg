@@ -1,4 +1,4 @@
-# pokus-ewg
+# quarkus-latest-ref
 
 A small Quarkus 3 application that demonstrates:
 - Reactive REST endpoints (RESTEasy Reactive + Mutiny)
@@ -74,8 +74,8 @@ kubectl wait --for=condition=available deployment/kafka --timeout=120s
 kubectl apply -f helm/configmap.yaml
 kubectl apply -f helm/deployment.yaml
 kubectl apply -f helm/service.yaml
-kubectl rollout restart deployment/pokus-ewg
-kubectl rollout status deployment/pokus-ewg
+kubectl rollout restart deployment/quarkus-latest-ref
+kubectl rollout status deployment/quarkus-latest-ref
 ```
 
 Optional: Redpanda admin API (port 9644) is exposed only inside the cluster. For debugging you can port‑forward:
@@ -109,23 +109,24 @@ Build the uber-jar and the Docker image:
 
 ```
 ./mvnw -DskipTests package
-docker build -t lorma/pokus-ewg:snapshot .
+docker build -t lorma/quarkus-latest-ref:snapshot .
 ```
 
 Run locally:
 
 ```
-docker run --rm -p 8080:8080 lorma/pokus-ewg:snapshot
+docker run --rm -p 8080:8080 lorma/quarkus-latest-ref:snapshot
 ```
 
-External configuration: you can mount a directory with configuration and Quarkus will pick it up via the QUARKUS_CONFIG_LOCATIONS environment variable (preconfigured in the Dockerfile to `/etc/pokus-ewg-config`):
+External configuration: you can mount a directory with configuration and Quarkus will pick it up via the
+QUARKUS_CONFIG_LOCATIONS environment variable (preconfigured in the Dockerfile to `/etc/quarkus-latest-ref-config`):
 
 ```
 # Windows PowerShell
-docker run --rm -p 8080:8080 -v %CD%\helm\app-config:/etc/pokus-ewg-config lorma/pokus-ewg:snapshot
+docker run --rm -p 8080:8080 -v %CD%\helm\app-config:/etc/quarkus-latest-ref-config lorma/quarkus-latest-ref:snapshot
 
 # Linux/macOS
-docker run --rm -p 8080:8080 -v $(pwd)/helm/app-config:/etc/pokus-ewg-config lorma/pokus-ewg:snapshot
+docker run --rm -p 8080:8080 -v $(pwd)/helm/app-config:/etc/quarkus-latest-ref-config lorma/quarkus-latest-ref:snapshot
 ```
 
 
@@ -136,7 +137,7 @@ If you use the Kubernetes that is built into Docker Desktop, you can build the i
 
 ```
 ./mvnw -DskipTests package
-docker build -t lorma/pokus-ewg:snapshot .
+docker build -t lorma/quarkus-latest-ref:snapshot .
 ```
 
 2) Adjust the image pull policy for development (so it doesn't try to pull from a registry):
@@ -146,8 +147,8 @@ docker build -t lorma/pokus-ewg:snapshot .
 
 ```
 kubectl apply -f helm/deployment.yaml
-kubectl rollout restart deployment/pokus-ewg
-kubectl rollout status deployment/pokus-ewg
+kubectl rollout restart deployment/quarkus-latest-ref
+kubectl rollout status deployment/quarkus-latest-ref
 ```
 
 Note: Docker Desktop Kubernetes uses the same Docker daemon, so any image you see under "Images" in Docker Desktop is also available to the Kubernetes nodes on the same host.
@@ -228,6 +229,32 @@ Prerequisites:
 - Docker Desktop with Kubernetes enabled, and kubectl context set to Docker Desktop
 - A local container image built as shown in the previous section (Docker Desktop shares the same image store with its Kubernetes)
 
+### Ingress configuration and avoiding conflicts
+
+The provided Ingress manifest (helm/ingress.yaml) now specifies an explicit host to avoid collisions with other Ingress
+objects that might already claim the default host "_" for the same paths (e.g., /kamiony):
+
+- Host: quarkus-latest-ref.local
+- Paths: /kamiony and /q routed to the quarkus-latest-ref Service
+
+Why this matters: If no host is specified, NGINX Ingress treats it as a wildcard "_". Many clusters already have
+Ingresses on the default host, which leads to an admission error like:
+
+admission webhook "validate.nginx.ingress.kubernetes.io" denied the request: host "_" and path "/kamiony" is already
+defined in ingress default/<name>
+
+How to access the app via the Ingress:
+
+- Option A: Add a hosts file entry pointing the host to your cluster’s ingress IP (often 127.0.0.1 on Docker Desktop):
+    - Windows (as Administrator): C:\Windows\System32\drivers\etc\hosts
+    - Add: 127.0.0.1 quarkus-latest-ref.local
+    - Then open: http://quarkus-latest-ref.local/kamiony or http://quarkus-latest-ref.local/q/health/ready
+- Option B: Change the host in helm/ingress.yaml to a dynamic DNS that resolves to localhost (no hosts file needed),
+  e.g. quarkus-latest-ref.127.0.0.1.nip.io or quarkus-latest-ref.127.0.0.1.sslip.io, then re-apply the Ingress.
+
+If you already have a conflicting Ingress claiming the same host+path, either delete it or pick a different host for
+this app before applying.
+
 Notes for Docker Desktop:
 - `imagePullPolicy: IfNotPresent` is already set in `helm/deployment.yaml`, so the pod will use your locally built image without pulling from a registry.
 - If you change the image tag/name, update it in `helm/deployment.yaml` accordingly and redeploy.
@@ -247,8 +274,8 @@ How to open Swagger UI:
 1) via NodePort
 
 ```
-# get the NodePort of the pokus-ewg service
-kubectl get svc pokus-ewg -o jsonpath="{.spec.ports[0].nodePort}"
+# get the NodePort of the quarkus-latest-ref service
+kubectl get svc quarkus-latest-ref -o jsonpath="{.spec.ports[0].nodePort}"
 ```
 
 - Docker Desktop (node on localhost):
@@ -257,7 +284,7 @@ kubectl get svc pokus-ewg -o jsonpath="{.spec.ports[0].nodePort}"
 2) alternative via port-forward (without NodePort):
 
 ```
-kubectl port-forward svc/pokus-ewg 8080:8080
+kubectl port-forward svc/quarkus-latest-ref 8080:8080
 # then open in the browser
 http://localhost:8080/q/swagger-ui
 ```
@@ -272,7 +299,7 @@ and Service are provided under `helm/jaeger.yaml` so you can explore traces in t
 ### 1) Deploy Jaeger to your cluster
 
 ```
-kubectl create ns pokus-ewg --dry-run=client -o yaml | kubectl apply -f -
+kubectl create ns quarkus-latest-ref --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f helm/jaeger.yaml
 kubectl wait --for=condition=available deployment/jaeger --timeout=120s
 ```

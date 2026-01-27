@@ -12,11 +12,11 @@ USER 1001
 
 # Skopírujeme jar z target/ (názov bude podľa artifactId a verzie)
 # Pri CI/CD môžete použiť presný názov alebo konvenciu s ARG
-ARG JAR_FILE=target/pokus-ewg-1.0.0-SNAPSHOT-runner.jar
+ARG JAR_FILE=target/quarkus-latest-ref-1.0.0-SNAPSHOT-runner.jar
 COPY ${JAR_FILE} /app/app.jar
 
 # Quarkus načíta externú konfiguráciu ak nastavíme QUARKUS_CONFIG_LOCATIONS
-ENV QUARKUS_CONFIG_LOCATIONS=/etc/pokus-ewg-config
+ENV QUARKUS_CONFIG_LOCATIONS=/etc/quarkus-latest-ref-config
 
 # Exponujeme default port Quarkusu
 EXPOSE 8080
